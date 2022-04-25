@@ -50,7 +50,7 @@
 //!
 //! There's also a basic piece of example code included in `/examples/2d.rs`
 
-use bevy::{input::mouse::MouseMotion, prelude::*};
+use bevy::{input::mouse::MouseMotion, prelude::*, math::Affine3A};
 use cam2d::camera_2d_movement_system;
 use util::movement_axis;
 
@@ -98,7 +98,13 @@ pub struct FlyCamera {
 	/// Key used to move forward. Defaults to <kbd>LShift</kbd>
 	pub key_down: KeyCode,
 	/// If `false`, disable keyboard control of the camera. Defaults to `true`
-	pub enabled: bool,
+	pub enabled_movement: bool,
+	/// If `false`, disable mouse control of the camera. Defaults to `true`
+	pub enabled_view: bool,
+	///
+	pub target: Option<Entity>,
+	/// 
+	pub target_distance: f32,
 }
 impl Default for FlyCamera {
 	fn default() -> Self {
@@ -116,7 +122,10 @@ impl Default for FlyCamera {
 			key_right: KeyCode::D,
 			key_up: KeyCode::Space,
 			key_down: KeyCode::LShift,
-			enabled: true,
+			enabled_movement: false,
+			enabled_view: false,
+			target: None,
+			target_distance: 10.0,
 		}
 	}
 }
@@ -144,19 +153,19 @@ fn camera_movement_system(
 	mut query: Query<(&mut FlyCamera, &mut Transform)>,
 ) {
 	for (mut options, mut transform) in query.iter_mut() {
-		let (axis_h, axis_v, axis_float) = if options.enabled {
-			(
-				movement_axis(&keyboard_input, options.key_right, options.key_left),
-				movement_axis(
-					&keyboard_input,
-					options.key_backward,
-					options.key_forward,
-				),
-				movement_axis(&keyboard_input, options.key_up, options.key_down),
-			)
-		} else {
-			(0.0, 0.0, 0.0)
-		};
+		if !options.enabled_movement {
+			continue;
+		}
+
+		let (axis_h, axis_v, axis_float) = (
+			movement_axis(&keyboard_input, options.key_right, options.key_left),
+			movement_axis(
+				&keyboard_input,
+				options.key_backward,
+				options.key_forward,
+			),
+			movement_axis(&keyboard_input, options.key_up, options.key_down),
+		);
 
 		let rotation = transform.rotation;
 		let accel: Vec3 = (strafe_vector(&rotation) * axis_h)
@@ -195,6 +204,51 @@ fn camera_movement_system(
 	}
 }
 
+fn camera_follow_system(
+	time: Res<Time>,
+	keyboard_input: Res<Input<KeyCode>>,
+	mut mouse_motion_event_reader: EventReader<MouseMotion>,
+	mut query_cam: Query<(&mut FlyCamera, &mut Transform)>,
+	mut query_target: Query<&Transform, Without<FlyCamera>>,
+) {
+	for (mut options, mut camera_transform) in query_cam.iter_mut() {
+		if options.enabled_movement || options.target == None {
+			continue;
+		}
+
+		let target = options.target.unwrap();
+		let target_transform = query_target.get(target).unwrap();
+
+		let mut forward_axis = target_transform.translation - camera_transform.translation;
+		forward_axis.y = 0.0;
+		forward_axis = forward_axis.normalize();
+
+		// mouse look
+		let mut delta: Vec2 = Vec2::ZERO;
+		for event in mouse_motion_event_reader.iter() {
+			delta += event.delta;
+		}
+		if delta.is_nan() {
+			continue;
+		}
+
+		options.yaw -= delta.x * options.sensitivity * time.delta_seconds();
+		options.pitch += delta.y * options.sensitivity * time.delta_seconds();
+
+		options.pitch = options.pitch.clamp(-89.0, 89.9);
+
+		let yaw_radians = options.yaw.to_radians();
+		let pitch_radians = options.pitch.to_radians();
+
+		let mut to_camera = -forward_axis;
+		to_camera = Quat::from_axis_angle(Vec3::Y, yaw_radians).mul_vec3(Vec3::Z).normalize();
+		to_camera = Quat::from_axis_angle(-Vec3::X, pitch_radians).mul_vec3(to_camera).normalize();
+
+		camera_transform.translation = target_transform.translation + to_camera * options.target_distance;
+		camera_transform.rotation = Quat::from_axis_angle(Vec3::Y, yaw_radians) * Quat::from_axis_angle(-Vec3::X, pitch_radians);
+	}
+}
+
 fn mouse_motion_system(
 	time: Res<Time>,
 	mut mouse_motion_event_reader: EventReader<MouseMotion>,
@@ -209,7 +263,7 @@ fn mouse_motion_system(
 	}
 
 	for (mut options, mut transform) in query.iter_mut() {
-		if !options.enabled {
+		if !options.enabled_view {
 			continue;
 		}
 		options.yaw -= delta.x * options.sensitivity * time.delta_seconds();
@@ -244,6 +298,7 @@ impl Plugin for FlyCameraPlugin {
 		app
 			.add_system(camera_movement_system)
 			.add_system(camera_2d_movement_system)
-			.add_system(mouse_motion_system);
+			.add_system(mouse_motion_system)
+			.add_system(camera_follow_system);
 	}
 }
