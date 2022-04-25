@@ -50,7 +50,12 @@
 //!
 //! There's also a basic piece of example code included in `/examples/2d.rs`
 
-use bevy::{input::mouse::MouseMotion, prelude::*, math::Affine3A};
+use bevy::{ 
+	input::{
+		mouse::{ MouseMotion, MouseScrollUnit, MouseWheel },
+		prelude::*,
+	},
+	prelude::*};
 use cam2d::camera_2d_movement_system;
 use util::movement_axis;
 
@@ -79,10 +84,14 @@ pub struct FlyCamera {
 	pub sensitivity: f32,
 	/// The amount of deceleration to apply to the camera's motion. Defaults to `1.0`
 	pub friction: f32,
+	///
+	pub zoom_sensitivity: f32,
 	/// The current pitch of the FlyCamera in degrees. This value is always up-to-date, enforced by [FlyCameraPlugin](struct.FlyCameraPlugin.html)
 	pub pitch: f32,
 	/// The current pitch of the FlyCamera in degrees. This value is always up-to-date, enforced by [FlyCameraPlugin](struct.FlyCameraPlugin.html)
 	pub yaw: f32,
+	///
+	pub zoom: f32,
 	/// The current velocity of the FlyCamera. This value is always up-to-date, enforced by [FlyCameraPlugin](struct.FlyCameraPlugin.html)
 	pub velocity: Vec3,
 	/// Key used to move forward. Defaults to <kbd>W</kbd>
@@ -102,9 +111,9 @@ pub struct FlyCamera {
 	/// If `false`, disable mouse control of the camera. Defaults to `true`
 	pub enabled_view: bool,
 	///
+	pub enabled_follow: bool,
+	///
 	pub target: Option<Entity>,
-	/// 
-	pub target_distance: f32,
 }
 impl Default for FlyCamera {
 	fn default() -> Self {
@@ -113,8 +122,10 @@ impl Default for FlyCamera {
 			max_speed: 0.5,
 			sensitivity: 3.0,
 			friction: 1.0,
+			zoom_sensitivity: 0.15,
 			pitch: 0.0,
 			yaw: 0.0,
+			zoom: 10.0,
 			velocity: Vec3::ZERO,
 			key_forward: KeyCode::W,
 			key_backward: KeyCode::S,
@@ -124,8 +135,8 @@ impl Default for FlyCamera {
 			key_down: KeyCode::LShift,
 			enabled_movement: false,
 			enabled_view: false,
+			enabled_follow: true,
 			target: None,
-			target_distance: 10.0,
 		}
 	}
 }
@@ -204,26 +215,27 @@ fn camera_movement_system(
 	}
 }
 
+// thanks smooth-bevy-cameras and Dunkan!
+fn unit_vector_from_yaw_and_pitch(yaw: f32, pitch: f32) -> Vec3 {
+    let ray = Mat3::from_rotation_y(yaw) * Vec3::Z;
+    let pitch_axis = ray.cross(Vec3::Y);
+
+    Mat3::from_axis_angle(pitch_axis, pitch) * ray
+}
+
 fn camera_follow_system(
 	time: Res<Time>,
 	keyboard_input: Res<Input<KeyCode>>,
 	mut mouse_motion_event_reader: EventReader<MouseMotion>,
+	mut mouse_wheel_event_reader: EventReader<MouseWheel>,
 	mut query_cam: Query<(&mut FlyCamera, &mut Transform)>,
-	mut query_target: Query<&Transform, Without<FlyCamera>>,
+		query_target: Query<&Transform, Without<FlyCamera>>,
 ) {
 	for (mut options, mut camera_transform) in query_cam.iter_mut() {
-		if options.enabled_movement || options.target == None {
+		if !options.enabled_follow || options.target == None {
 			continue;
 		}
 
-		let target = options.target.unwrap();
-		let target_transform = query_target.get(target).unwrap();
-
-		let mut forward_axis = target_transform.translation - camera_transform.translation;
-		forward_axis.y = 0.0;
-		forward_axis = forward_axis.normalize();
-
-		// mouse look
 		let mut delta: Vec2 = Vec2::ZERO;
 		for event in mouse_motion_event_reader.iter() {
 			delta += event.delta;
@@ -240,11 +252,31 @@ fn camera_follow_system(
 		let yaw_radians = options.yaw.to_radians();
 		let pitch_radians = options.pitch.to_radians();
 
-		let mut to_camera = -forward_axis;
-		to_camera = Quat::from_axis_angle(Vec3::Y, yaw_radians).mul_vec3(Vec3::Z).normalize();
-		to_camera = Quat::from_axis_angle(-Vec3::X, pitch_radians).mul_vec3(to_camera).normalize();
+		//
 
-		camera_transform.translation = target_transform.translation + to_camera * options.target_distance;
+		let pixels_per_line = 53.0;
+		let mut scalar = 1.0;
+		for event in mouse_wheel_event_reader.iter() {
+			// scale the event magnitude per pixel or per line
+			let scroll_amount = match event.unit {
+				MouseScrollUnit::Line => event.y,
+				MouseScrollUnit::Pixel => event.y / pixels_per_line,
+			};
+			scalar *= 1.0 - scroll_amount * options.zoom_sensitivity;
+		}
+
+		options.zoom = (scalar * options.zoom)
+			.min(100.0)
+			.max(1.0);
+
+		//
+
+		let target = options.target.unwrap();
+		let target_transform = query_target.get(target).unwrap();
+
+		//
+
+		camera_transform.translation = target_transform.translation + options.zoom * unit_vector_from_yaw_and_pitch(yaw_radians, pitch_radians);
 		camera_transform.rotation = Quat::from_axis_angle(Vec3::Y, yaw_radians) * Quat::from_axis_angle(-Vec3::X, pitch_radians);
 	}
 }
