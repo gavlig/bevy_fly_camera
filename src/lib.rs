@@ -225,7 +225,6 @@ fn unit_vector_from_yaw_and_pitch(yaw: f32, pitch: f32) -> Vec3 {
 
 fn camera_follow_system(
 	time: Res<Time>,
-	keyboard_input: Res<Input<KeyCode>>,
 	mut mouse_motion_event_reader: EventReader<MouseMotion>,
 	mut mouse_wheel_event_reader: EventReader<MouseWheel>,
 	mut query_cam: Query<(&mut FlyCamera, &mut Transform)>,
