@@ -107,9 +107,11 @@ pub struct FlyCamera {
 	/// Key used to move forward. Defaults to <kbd>LShift</kbd>
 	pub key_down: KeyCode,
 	/// If `false`, disable keyboard control of the camera. Defaults to `true`
-	pub enabled_movement: bool,
+	pub enabled_translation: bool,
 	/// If `false`, disable mouse control of the camera. Defaults to `true`
-	pub enabled_view: bool,
+	pub enabled_rotation: bool,
+	///
+	pub enabled_zoom: bool,
 	///
 	pub enabled_follow: bool,
 	///
@@ -133,8 +135,9 @@ impl Default for FlyCamera {
 			key_right: KeyCode::D,
 			key_up: KeyCode::Space,
 			key_down: KeyCode::LShift,
-			enabled_movement: false,
-			enabled_view: false,
+			enabled_translation: true,
+			enabled_rotation: true,
+			enabled_zoom: true,
 			enabled_follow: true,
 			target: None,
 		}
@@ -164,7 +167,7 @@ fn camera_movement_system(
 	mut query: Query<(&mut FlyCamera, &mut Transform)>,
 ) {
 	for (mut options, mut transform) in query.iter_mut() {
-		if !options.enabled_movement {
+		if !options.enabled_translation {
 			continue;
 		}
 
@@ -243,10 +246,12 @@ fn camera_follow_system(
 			continue;
 		}
 
-		options.yaw -= delta.x * options.sensitivity * time.delta_seconds();
-		options.pitch += delta.y * options.sensitivity * time.delta_seconds();
+		if options.enabled_rotation {
+			options.yaw -= delta.x * options.sensitivity * time.delta_seconds();
+			options.pitch += delta.y * options.sensitivity * time.delta_seconds();
 
-		options.pitch = options.pitch.clamp(-89.0, 89.9);
+			options.pitch = options.pitch.clamp(-89.0, 89.9);
+		}
 
 		let yaw_radians = options.yaw.to_radians();
 		let pitch_radians = options.pitch.to_radians();
@@ -264,18 +269,20 @@ fn camera_follow_system(
 			scalar *= 1.0 - scroll_amount * options.zoom_sensitivity;
 		}
 
-		options.zoom = (scalar * options.zoom)
-			.min(100.0)
-			.max(1.0);
+		if options.enabled_zoom {
+			options.zoom = (scalar * options.zoom)
+				.min(100.0)
+				.max(1.0);
+		}
 
 		//
+		if options.enabled_translation {
+			let target = options.target.unwrap();
+			let target_transform = query_target.get(target).unwrap();
 
-		let target = options.target.unwrap();
-		let target_transform = query_target.get(target).unwrap();
+			camera_transform.translation = target_transform.translation + options.zoom * unit_vector_from_yaw_and_pitch(yaw_radians, pitch_radians);
+		}
 
-		//
-
-		camera_transform.translation = target_transform.translation + options.zoom * unit_vector_from_yaw_and_pitch(yaw_radians, pitch_radians);
 		camera_transform.rotation = Quat::from_axis_angle(Vec3::Y, yaw_radians) * Quat::from_axis_angle(-Vec3::X, pitch_radians);
 	}
 }
@@ -294,7 +301,7 @@ fn mouse_motion_system(
 	}
 
 	for (mut options, mut transform) in query.iter_mut() {
-		if !options.enabled_view {
+		if !options.enabled_rotation {
 			continue;
 		}
 		options.yaw -= delta.x * options.sensitivity * time.delta_seconds();
