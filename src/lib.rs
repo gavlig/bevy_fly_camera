@@ -167,7 +167,7 @@ fn camera_movement_system(
 	mut query: Query<(&mut FlyCamera, &mut Transform)>,
 ) {
 	for (mut options, mut transform) in query.iter_mut() {
-		if !options.enabled_translation {
+		if !options.enabled_translation || options.enabled_follow {
 			continue;
 		}
 
@@ -301,7 +301,7 @@ fn mouse_motion_system(
 	}
 
 	for (mut options, mut transform) in query.iter_mut() {
-		if !options.enabled_rotation {
+		if !options.enabled_rotation || options.enabled_follow {
 			continue;
 		}
 		options.yaw -= delta.x * options.sensitivity * time.delta_seconds();
