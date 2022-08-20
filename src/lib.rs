@@ -55,7 +55,9 @@ use bevy::{
 		mouse::{ MouseMotion, MouseScrollUnit, MouseWheel },
 		prelude::*,
 	},
-	prelude::*};
+	prelude::*,
+	render::camera::*
+};
 use cam2d::camera_2d_movement_system;
 use util::movement_axis;
 
@@ -106,6 +108,14 @@ pub struct FlyCamera {
 	pub key_up: KeyCode,
 	/// Key used to move forward. Defaults to <kbd>LShift</kbd>
 	pub key_down: KeyCode,
+	/// Key used to toggle perspective mode on camera. Defaults to <kbd>Return</kbd>
+	pub key_perspective: KeyCode,
+	/// Key used as modifier along with key_perspective. Optional. Defaults to Some(<kbd>LControl</kbd>)
+	pub mod_perspective: Option<KeyCode>,
+	/// If `true` camera rotation gets reset to 0 when projection switches to orthographic from perspective. Defaults to `true`
+	pub reset_rotation_on_ortho: bool,
+	/// indicates if camera has perspective projection. Switches to orthographic when `false`
+	pub perspective: bool, 
 	/// If `false`, disable keyboard control of the camera. Defaults to `true`
 	pub enabled_translation: bool,
 	/// If `false`, disable mouse control of the camera. Defaults to `true`
@@ -135,11 +145,15 @@ impl Default for FlyCamera {
 			key_right: KeyCode::D,
 			key_up: KeyCode::Space,
 			key_down: KeyCode::LShift,
+			key_perspective: KeyCode::Return,
+			mod_perspective: Some(KeyCode::LControl),
+			reset_rotation_on_ortho: true,
 			enabled_translation: true,
 			enabled_rotation: true,
 			enabled_zoom: true,
 			enabled_follow: true,
 			target: None,
+			perspective: true,
 		}
 	}
 }
@@ -164,9 +178,9 @@ fn strafe_vector(rotation: &Quat) -> Vec3 {
 fn camera_movement_system(
 	time: Res<Time>,
 	keyboard_input: Res<Input<KeyCode>>,
-	mut query: Query<(&mut FlyCamera, &mut Transform)>,
+	mut query: Query<(&mut FlyCamera, &mut Transform, &mut Projection)>,
 ) {
-	for (mut options, mut transform) in query.iter_mut() {
+	for (mut options, mut transform, mut projection) in query.iter_mut() {
 		if !options.enabled_translation || options.enabled_follow {
 			continue;
 		}
@@ -180,6 +194,29 @@ fn camera_movement_system(
 			),
 			movement_axis(&keyboard_input, options.key_up, options.key_down),
 		);
+
+		let modper = options.mod_perspective;
+		let perspective_mod = (modper.is_some() && keyboard_input.pressed(modper.unwrap())) || modper.is_none();
+		if (perspective_mod && keyboard_input.just_pressed(options.key_perspective)) {
+			let toggle 	= !options.perspective;
+			options.perspective = toggle;
+
+			*projection = 
+			if options.perspective {
+				Projection::Perspective(PerspectiveProjection::default())
+			} else {
+				options.yaw = 0.0;
+				options.pitch = 0.0;
+
+				Projection::Orthographic(
+				OrthographicProjection {
+					scale: 3.0,
+					scaling_mode: ScalingMode::FixedVertical(2.0),
+					..default()
+				
+				})
+			}
+		}
 
 		let rotation = transform.rotation;
 		let accel: Vec3 = (strafe_vector(&rotation) * axis_h)
