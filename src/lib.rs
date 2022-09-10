@@ -56,7 +56,7 @@ use bevy::{
 		prelude::*,
 	},
 	prelude::*,
-	render::camera::*
+	render::camera::{*, self}
 };
 use cam2d::camera_2d_movement_system;
 use util::movement_axis;
@@ -88,12 +88,22 @@ pub struct FlyCamera {
 	pub friction: f32,
 	///
 	pub zoom_sensitivity: f32,
+	///
+	pub vertical_scroll_sensitivity: f32,
+	///
+	pub horizontal_scroll_sensitivity: f32,
+	///
+	pub lean_sensitivity: f32,
 	/// The current pitch of the FlyCamera in degrees. This value is always up-to-date, enforced by [FlyCameraPlugin](struct.FlyCameraPlugin.html)
 	pub pitch: f32,
 	/// The current pitch of the FlyCamera in degrees. This value is always up-to-date, enforced by [FlyCameraPlugin](struct.FlyCameraPlugin.html)
 	pub yaw: f32,
 	///
 	pub zoom: f32,
+	///
+	pub vertical_scroll: f32,
+	///
+	pub horizontal_scroll: f32,
 	/// The current velocity of the FlyCamera. This value is always up-to-date, enforced by [FlyCameraPlugin](struct.FlyCameraPlugin.html)
 	pub velocity: Vec3,
 	/// Key used to move forward. Defaults to <kbd>W</kbd>
@@ -125,6 +135,8 @@ pub struct FlyCamera {
 	///
 	pub enabled_follow: bool,
 	///
+	pub enabled_reader: bool,
+	///
 	pub target: Option<Entity>,
 }
 impl Default for FlyCamera {
@@ -135,9 +147,14 @@ impl Default for FlyCamera {
 			sensitivity: 3.0,
 			friction: 1.0,
 			zoom_sensitivity: 0.15,
+			vertical_scroll_sensitivity: 1.5,
+			horizontal_scroll_sensitivity: 1.0,
+			lean_sensitivity: 0.1,
 			pitch: 0.0,
 			yaw: 0.0,
 			zoom: 10.0,
+			vertical_scroll: 0.0,
+			horizontal_scroll: 0.0,
 			velocity: Vec3::ZERO,
 			key_forward: KeyCode::W,
 			key_backward: KeyCode::S,
@@ -151,7 +168,8 @@ impl Default for FlyCamera {
 			enabled_translation: true,
 			enabled_rotation: true,
 			enabled_zoom: true,
-			enabled_follow: true,
+			enabled_follow: false,
+			enabled_reader: true,
 			target: None,
 			perspective: true,
 		}
@@ -181,7 +199,7 @@ fn camera_movement_system(
 	mut query: Query<(&mut FlyCamera, &mut Transform, &mut Projection)>,
 ) {
 	for (mut options, mut transform, mut projection) in query.iter_mut() {
-		if !options.enabled_translation || options.enabled_follow {
+		if !options.enabled_translation || options.enabled_follow || options.enabled_reader {
 			continue;
 		}
 
@@ -197,7 +215,7 @@ fn camera_movement_system(
 
 		let modper = options.mod_perspective;
 		let perspective_mod = (modper.is_some() && keyboard_input.pressed(modper.unwrap())) || modper.is_none();
-		if (perspective_mod && keyboard_input.just_pressed(options.key_perspective)) {
+		if perspective_mod && keyboard_input.just_pressed(options.key_perspective) {
 			let toggle 	= !options.perspective;
 			options.perspective = toggle;
 
@@ -320,7 +338,9 @@ fn camera_follow_system(
 			camera_transform.translation = target_transform.translation + options.zoom * unit_vector_from_yaw_and_pitch(yaw_radians, pitch_radians);
 		}
 
-		camera_transform.rotation = Quat::from_axis_angle(Vec3::Y, yaw_radians) * Quat::from_axis_angle(-Vec3::X, pitch_radians);
+		if options.enabled_rotation {
+			camera_transform.rotation = Quat::from_axis_angle(Vec3::Y, yaw_radians) * Quat::from_axis_angle(-Vec3::X, pitch_radians);
+		}
 	}
 }
 
@@ -338,7 +358,7 @@ fn mouse_motion_system(
 	}
 
 	for (mut options, mut transform) in query.iter_mut() {
-		if !options.enabled_rotation || options.enabled_follow {
+		if !options.enabled_rotation || options.enabled_follow || options.enabled_reader {
 			continue;
 		}
 		options.yaw -= delta.x * options.sensitivity * time.delta_seconds();
@@ -352,6 +372,61 @@ fn mouse_motion_system(
 
 		transform.rotation = Quat::from_axis_angle(Vec3::Y, yaw_radians)
 			* Quat::from_axis_angle(-Vec3::X, pitch_radians);
+	}
+}
+
+fn mouse_reader_system(
+	time: Res<Time>,
+	mut mouse_motion_event_reader: EventReader<MouseMotion>,
+	mut query: Query<(&mut FlyCamera, &mut Transform)>,
+		query_target: Query<&Transform, Without<FlyCamera>>,
+) {
+	let mut delta: Vec2 = Vec2::ZERO;
+	for event in mouse_motion_event_reader.iter() {
+		delta += event.delta;
+	}
+	if delta.is_nan() {
+		return;
+	}
+
+	for (mut options, mut camera_transform) in query.iter_mut() {
+		if !options.enabled_reader {
+			continue;
+		}
+
+		let yaw_radians = options.yaw.to_radians();
+		let pitch_radians = options.pitch.to_radians();
+
+		if options.enabled_translation {
+			let target = options.target.unwrap();
+			let target_transform = query_target.get(target).unwrap();
+
+			options.vertical_scroll += delta.y * options.vertical_scroll_sensitivity * time.delta_seconds();
+			options.horizontal_scroll += delta.x * options.horizontal_scroll_sensitivity * time.delta_seconds();
+
+			camera_transform.translation = target_transform.translation
+				+ options.zoom * unit_vector_from_yaw_and_pitch(yaw_radians, pitch_radians)
+				+ Vec3::X * options.horizontal_scroll
+				+ Vec3::Y * options.vertical_scroll
+				;
+		}
+
+		if options.enabled_rotation {
+			let value = 3.0;
+			let target_pitch : f32 =
+			if delta.y < 0.0 {
+				-value
+			} else if delta.y > 0.0 {
+				value
+			} else {
+				0.0
+			};
+
+			let from = camera_transform.rotation;
+			let to = Quat::from_axis_angle(Vec3::X, target_pitch.to_radians());
+
+			camera_transform.rotation = from.slerp(to, options.lean_sensitivity);
+		}
 	}
 }
 
@@ -374,6 +449,7 @@ impl Plugin for FlyCameraPlugin {
 			.add_system(camera_movement_system)
 			.add_system(camera_2d_movement_system)
 			.add_system(mouse_motion_system)
-			.add_system(camera_follow_system);
+			.add_system(camera_follow_system)
+			.add_system(mouse_reader_system);
 	}
 }
