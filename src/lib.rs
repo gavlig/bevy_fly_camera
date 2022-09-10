@@ -58,6 +58,7 @@ use bevy::{
 	prelude::*,
 	render::camera::{*, self}
 };
+use lerp::Lerp;
 use cam2d::camera_2d_movement_system;
 use util::movement_axis;
 
@@ -422,8 +423,10 @@ fn mouse_reader_system(
 				0.0
 			};
 
+			options.pitch = options.pitch.lerp(target_pitch, options.lean_sensitivity);
+
 			let from = camera_transform.rotation;
-			let to = Quat::from_axis_angle(Vec3::X, target_pitch.to_radians());
+			let to = Quat::from_axis_angle(Vec3::X, options.pitch.to_radians());
 
 			camera_transform.rotation = from.slerp(to, options.lean_sensitivity);
 		}
