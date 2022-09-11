@@ -138,6 +138,8 @@ pub struct FlyCamera {
 	pub horizontal_scroll: f32,
 	///
 	pub column: u32,
+	///
+	pub row: u32,
 	/// The current velocity of the FlyCamera. This value is always up-to-date, enforced by [FlyCameraPlugin](struct.FlyCameraPlugin.html)
 	pub velocity: Vec3,
 	/// Key used to move forward. Defaults to <kbd>W</kbd>
@@ -194,6 +196,7 @@ impl Default for FlyCamera {
 			vertical_scroll: 0.0,
 			horizontal_scroll: 0.0,
 			column: 40,
+			row: 20,
 			velocity: Vec3::ZERO,
 			key_forward: KeyCode::W,
 			key_backward: KeyCode::S,
@@ -465,12 +468,16 @@ fn mouse_reader_system(
 			let target = options.target.unwrap();
 			let (target_transform, reader_data) = q_target.get(target).unwrap();
 
-			let delta_y = if options.invert_y { delta.y } else { -delta.y };
-			options.vertical_scroll += delta_y * options.vertical_scroll_sensitivity * time.delta_seconds();
+			// let delta_y = if options.invert_y { delta.y } else { -delta.y };
+			// options.vertical_scroll += delta_y * options.vertical_scroll_sensitivity * time.delta_seconds();
 			// options.horizontal_scroll += delta.x * options.horizontal_scroll_sensitivity * time.delta_seconds();
 			// println!("horizontal scroll {}", options.horizontal_scroll);
 
-			options.horizontal_scroll = options.column as f32 * reader_data.glyph_width;
+			let column = options.column as f32;
+			let row = if options.invert_y { options.row as f32 } else { -(options.row as f32) };
+
+			options.horizontal_scroll = column * reader_data.glyph_width;
+			options.vertical_scroll = row * reader_data.glyph_height;
 
 			camera_transform.translation = target_transform.translation
 				+ options.zoom * unit_vector_from_yaw_and_pitch(yaw_radians, pitch_radians)
@@ -479,7 +486,7 @@ fn mouse_reader_system(
 				;
 		}
 
-		if options.enabled_rotation {
+		if options.enabled_rotation && false {
 			let value = 3.0;
 			let (target_pitch, inertia) =
 			if delta.y < 0.0 {
