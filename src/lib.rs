@@ -140,6 +140,14 @@ pub struct FlyCamera {
 	pub column: u32,
 	///
 	pub row: u32,
+	///
+	pub column_scroll_accum: f32,
+	///
+	pub row_scroll_accum: f32,
+	///
+	pub column_scroll_mouse_quantized: bool,
+	///
+	pub row_scroll_mouse_quantized: bool,
 	/// The current velocity of the FlyCamera. This value is always up-to-date, enforced by [FlyCameraPlugin](struct.FlyCameraPlugin.html)
 	pub velocity: Vec3,
 	/// Key used to move forward. Defaults to <kbd>W</kbd>
@@ -197,6 +205,10 @@ impl Default for FlyCamera {
 			horizontal_scroll: 0.0,
 			column: 40,
 			row: 20,
+			column_scroll_accum: 0.0,
+			row_scroll_accum: 0.0,
+			column_scroll_mouse_quantized: true,
+			row_scroll_mouse_quantized: true,
 			velocity: Vec3::ZERO,
 			key_forward: KeyCode::W,
 			key_backward: KeyCode::S,
@@ -468,16 +480,44 @@ fn mouse_reader_system(
 			let target = options.target.unwrap();
 			let (target_transform, reader_data) = q_target.get(target).unwrap();
 
-			// let delta_y = if options.invert_y { delta.y } else { -delta.y };
-			// options.vertical_scroll += delta_y * options.vertical_scroll_sensitivity * time.delta_seconds();
-			// options.horizontal_scroll += delta.x * options.horizontal_scroll_sensitivity * time.delta_seconds();
-			// println!("horizontal scroll {}", options.horizontal_scroll);
+			let delta_x = delta.x;
+			let delta_y = if options.invert_y { delta.y } else { -delta.y };
+			options.row_scroll_accum += delta_y * options.vertical_scroll_sensitivity * time.delta_seconds();
+			options.column_scroll_accum += delta_x * options.horizontal_scroll_sensitivity * time.delta_seconds();
+
+			// we keep row_scroll_accum for scrolling in range of glyph_height
+			while options.row_scroll_accum.abs() > reader_data.glyph_height {
+				let delta_one = delta.y.signum();
+				if options.row > 0 || delta_one.is_sign_positive() {
+					options.row = (options.row as f32 + delta_one) as u32;
+				}
+
+				options.row_scroll_accum -= reader_data.glyph_height * options.row_scroll_accum.signum();
+			}
+
+			// same for columns
+			while options.column_scroll_accum.abs() > reader_data.glyph_width {
+				let delta_one = delta.x.signum();
+				if options.column > 0 || delta_one.is_sign_positive() {
+					options.column = (options.column as f32 + delta_one) as u32;
+				}
+
+				options.column_scroll_accum -= reader_data.glyph_width * options.column_scroll_accum.signum();
+			}
 
 			let column = options.column as f32;
 			let row = if options.invert_y { options.row as f32 } else { -(options.row as f32) };
 
 			options.horizontal_scroll = column * reader_data.glyph_width;
 			options.vertical_scroll = row * reader_data.glyph_height;
+
+			if !options.column_scroll_mouse_quantized {
+				options.horizontal_scroll += options.column_scroll_accum;
+			}
+
+			if !options.row_scroll_mouse_quantized {
+				options.vertical_scroll += options.row_scroll_accum;
+			}
 
 			camera_transform.translation = target_transform.translation
 				+ options.zoom * unit_vector_from_yaw_and_pitch(yaw_radians, pitch_radians)
