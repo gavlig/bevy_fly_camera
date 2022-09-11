@@ -154,6 +154,10 @@ pub struct FlyCamera {
 	pub scroll_stopped_time: f32,
 	///
 	pub scroll_reset_inertia: f32,
+	///
+	pub target_translation: Vec3,
+	///
+	pub target_rotation: Quat,
 	/// The current velocity of the FlyCamera. This value is always up-to-date, enforced by [FlyCameraPlugin](struct.FlyCameraPlugin.html)
 	pub velocity: Vec3,
 	/// Key used to move forward. Defaults to <kbd>W</kbd>
@@ -203,7 +207,7 @@ impl Default for FlyCamera {
 			horizontal_scroll_sensitivity: 0.2,
 			lean_sensitivity: 0.1,
 			lean_inertia: 0.05,
-			lean_reset_inertia: 0.07,
+			lean_reset_inertia: 0.3,
 			pitch: 0.0,
 			yaw: 0.0,
 			zoom: 10.0,
@@ -218,6 +222,8 @@ impl Default for FlyCamera {
 			scroll_stopped_cooldown: 0.05,
 			scroll_stopped_time: 0.0,
 			scroll_reset_inertia: 0.4,
+			target_translation: Vec3::ZERO,
+			target_rotation: Quat::IDENTITY,
 			velocity: Vec3::ZERO,
 			key_forward: KeyCode::W,
 			key_backward: KeyCode::S,
@@ -528,39 +534,32 @@ fn mouse_reader_system(
 				options.vertical_scroll += options.row_scroll_accum;
 			}
 
-			// move camera to quantized position when no mouse input
-			// if delta.x == 0.0 && delta.y == 0.0 {
-				// if options.scroll_stopped_time >= 0.0 {
-					// options.scroll_stopped_time -= time.delta_seconds();
-				// } else {
-					options.row_scroll_accum = options.row_scroll_accum.lerp(0.0, options.scroll_reset_inertia);
-					options.column_scroll_accum = options.column_scroll_accum.lerp(0.0, options.scroll_reset_inertia);
-				// }
-			// } else {
-			// 	options.scroll_stopped_time = options.scroll_stopped_cooldown;
-			// }
+			// always slowly move camera to quantized position 
+			options.row_scroll_accum = options.row_scroll_accum.lerp(0.0, options.scroll_reset_inertia);
+			options.column_scroll_accum = options.column_scroll_accum.lerp(0.0, options.scroll_reset_inertia);
 
-			camera_transform.translation = target_transform.translation
+			options.target_translation = target_transform.translation
 				+ options.zoom * unit_vector_from_yaw_and_pitch(yaw_radians, pitch_radians)
 				+ Vec3::X * options.horizontal_scroll
 				+ Vec3::Y * options.vertical_scroll
 				;
+
+			camera_transform.translation = camera_transform.translation.lerp(options.target_translation, 0.5);
 		}
 
-		if options.enabled_rotation && false {
+		if options.enabled_rotation {
 			let value = 3.0;
+			let delta_y = if options.invert_y { -delta.y } else {delta.y };
 			let (target_pitch, inertia) =
-			if delta.y < 0.0 {
+			if delta_y < 0.0 {
 				(-value, options.lean_inertia)
-			} else if delta.y > 0.0 {
+			} else if delta_y > 0.0 {
 				(value, options.lean_inertia)
 			} else {
 				(0.0, options.lean_reset_inertia)
 			};
 
 			options.pitch = options.pitch.lerp(target_pitch, inertia);
-
-			// println!("pitch: {} value: {}", options.pitch, value);
 
 			let from = camera_transform.rotation;
 			let to = Quat::from_axis_angle(Vec3::X, options.pitch.to_radians());
