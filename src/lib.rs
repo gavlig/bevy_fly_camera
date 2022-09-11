@@ -77,6 +77,21 @@ pub struct CenterPickRaycast;
 #[derive(Component)]
 pub struct CenterPickRaycastParent;
 
+#[derive(Component, Default)]
+pub struct ReaderData {
+	pub glyph_width: f32,
+	pub glyph_height: f32,
+	pub rows: u32,
+	pub columns: u32,
+}
+
+#[derive(Component, Default)]
+pub struct Row(pub u32);
+
+#[derive(Component, Default)]
+pub struct Column(pub u32);
+
+
 type PickingObject = bevy_mod_picking::RayCastSource<PickingRaycastSet>;
 
 /// A set of options for initializing a FlyCamera.
@@ -121,6 +136,8 @@ pub struct FlyCamera {
 	pub vertical_scroll: f32,
 	///
 	pub horizontal_scroll: f32,
+	///
+	pub column: u32,
 	/// The current velocity of the FlyCamera. This value is always up-to-date, enforced by [FlyCameraPlugin](struct.FlyCameraPlugin.html)
 	pub velocity: Vec3,
 	/// Key used to move forward. Defaults to <kbd>W</kbd>
@@ -176,6 +193,7 @@ impl Default for FlyCamera {
 			zoom: 10.0,
 			vertical_scroll: 0.0,
 			horizontal_scroll: 0.0,
+			column: 40,
 			velocity: Vec3::ZERO,
 			key_forward: KeyCode::W,
 			key_backward: KeyCode::S,
@@ -403,7 +421,7 @@ fn mouse_reader_system(
 	mut mouse_wheel_event_reader: EventReader<MouseWheel>,
 	mut q_flycam: Query<(&mut FlyCamera, &mut Transform, &Children)>,
 		q_center_pick_raycast: Query<&PickingObject, With<CenterPickRaycast>>,
-		q_any: Query<&Transform, Without<FlyCamera>>,
+		q_target: Query<(&Transform, &ReaderData), Without<FlyCamera>>,
 		q_center_pick: Query<Entity, With<CenterPick>>,
 	mut commands: Commands
 ) {
@@ -445,11 +463,14 @@ fn mouse_reader_system(
 
 		if options.enabled_translation {
 			let target = options.target.unwrap();
-			let target_transform = q_any.get(target).unwrap();
+			let (target_transform, reader_data) = q_target.get(target).unwrap();
 
 			let delta_y = if options.invert_y { delta.y } else { -delta.y };
 			options.vertical_scroll += delta_y * options.vertical_scroll_sensitivity * time.delta_seconds();
-			options.horizontal_scroll += delta.x * options.horizontal_scroll_sensitivity * time.delta_seconds();
+			// options.horizontal_scroll += delta.x * options.horizontal_scroll_sensitivity * time.delta_seconds();
+			// println!("horizontal scroll {}", options.horizontal_scroll);
+
+			options.horizontal_scroll = options.column as f32 * reader_data.glyph_width;
 
 			camera_transform.translation = target_transform.translation
 				+ options.zoom * unit_vector_from_yaw_and_pitch(yaw_radians, pitch_radians)
