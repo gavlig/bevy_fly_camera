@@ -148,6 +148,12 @@ pub struct FlyCamera {
 	pub column_scroll_mouse_quantized: bool,
 	///
 	pub row_scroll_mouse_quantized: bool,
+	///
+	pub scroll_stopped_cooldown: f32,
+	///
+	pub scroll_stopped_time: f32,
+	///
+	pub scroll_reset_inertia: f32,
 	/// The current velocity of the FlyCamera. This value is always up-to-date, enforced by [FlyCameraPlugin](struct.FlyCameraPlugin.html)
 	pub velocity: Vec3,
 	/// Key used to move forward. Defaults to <kbd>W</kbd>
@@ -207,8 +213,11 @@ impl Default for FlyCamera {
 			row: 20,
 			column_scroll_accum: 0.0,
 			row_scroll_accum: 0.0,
-			column_scroll_mouse_quantized: true,
-			row_scroll_mouse_quantized: true,
+			column_scroll_mouse_quantized: false,
+			row_scroll_mouse_quantized: false,
+			scroll_stopped_cooldown: 0.05,
+			scroll_stopped_time: 0.0,
+			scroll_reset_inertia: 0.4,
 			velocity: Vec3::ZERO,
 			key_forward: KeyCode::W,
 			key_backward: KeyCode::S,
@@ -519,6 +528,18 @@ fn mouse_reader_system(
 				options.vertical_scroll += options.row_scroll_accum;
 			}
 
+			// move camera to quantized position when no mouse input
+			// if delta.x == 0.0 && delta.y == 0.0 {
+				// if options.scroll_stopped_time >= 0.0 {
+					// options.scroll_stopped_time -= time.delta_seconds();
+				// } else {
+					options.row_scroll_accum = options.row_scroll_accum.lerp(0.0, options.scroll_reset_inertia);
+					options.column_scroll_accum = options.column_scroll_accum.lerp(0.0, options.scroll_reset_inertia);
+				// }
+			// } else {
+			// 	options.scroll_stopped_time = options.scroll_stopped_cooldown;
+			// }
+
 			camera_transform.translation = target_transform.translation
 				+ options.zoom * unit_vector_from_yaw_and_pitch(yaw_radians, pitch_radians)
 				+ Vec3::X * options.horizontal_scroll
@@ -538,6 +559,8 @@ fn mouse_reader_system(
 			};
 
 			options.pitch = options.pitch.lerp(target_pitch, inertia);
+
+			// println!("pitch: {} value: {}", options.pitch, value);
 
 			let from = camera_transform.rotation;
 			let to = Quat::from_axis_angle(Vec3::X, options.pitch.to_radians());
