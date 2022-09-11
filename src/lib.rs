@@ -97,6 +97,8 @@ pub struct FlyCamera {
 	pub lean_sensitivity: f32,
 	///
 	pub lean_inertia: f32,
+	///
+	pub lean_reset_inertia: f32,
 	/// The current pitch of the FlyCamera in degrees. This value is always up-to-date, enforced by [FlyCameraPlugin](struct.FlyCameraPlugin.html)
 	pub pitch: f32,
 	/// The current pitch of the FlyCamera in degrees. This value is always up-to-date, enforced by [FlyCameraPlugin](struct.FlyCameraPlugin.html)
@@ -154,6 +156,7 @@ impl Default for FlyCamera {
 			horizontal_scroll_sensitivity: 1.0,
 			lean_sensitivity: 0.1,
 			lean_inertia: 0.05,
+			lean_reset_inertia: 0.07,
 			pitch: 0.0,
 			yaw: 0.0,
 			zoom: 10.0,
@@ -417,16 +420,16 @@ fn mouse_reader_system(
 
 		if options.enabled_rotation {
 			let value = 3.0;
-			let target_pitch : f32 =
+			let (target_pitch, inertia) =
 			if delta.y < 0.0 {
-				-value
+				(-value, options.lean_inertia)
 			} else if delta.y > 0.0 {
-				value
+				(value, options.lean_inertia)
 			} else {
-				0.0
+				(0.0, options.lean_reset_inertia)
 			};
 
-			options.pitch = options.pitch.lerp(target_pitch, options.lean_inertia);
+			options.pitch = options.pitch.lerp(target_pitch, inertia);
 
 			let from = camera_transform.rotation;
 			let to = Quat::from_axis_angle(Vec3::X, options.pitch.to_radians());
