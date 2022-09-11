@@ -58,6 +58,7 @@ use bevy::{
 	prelude::*,
 	render::camera::{*, self}
 };
+use bevy_mod_picking::*;
 use lerp::Lerp;
 use cam2d::camera_2d_movement_system;
 use util::movement_axis;
@@ -66,6 +67,17 @@ mod cam2d;
 mod util;
 
 pub use cam2d::FlyCamera2d;
+
+#[derive(Component)]
+pub struct CenterPick;
+
+#[derive(Component)]
+pub struct CenterPickRaycast;
+
+#[derive(Component)]
+pub struct CenterPickRaycastParent;
+
+type PickingObject = bevy_mod_picking::RayCastSource<PickingRaycastSet>;
 
 /// A set of options for initializing a FlyCamera.
 /// Attach this component to a [`Camera3dBundle`](https://docs.rs/bevy/0.4.0/bevy/prelude/struct.Camera3dBundle.html) bundle to control it with your mouse and keyboard.
@@ -142,6 +154,8 @@ pub struct FlyCamera {
 	///
 	pub enabled_reader: bool,
 	///
+	pub invert_y: bool,
+	///
 	pub target: Option<Entity>,
 }
 impl Default for FlyCamera {
@@ -177,6 +191,7 @@ impl Default for FlyCamera {
 			enabled_zoom: true,
 			enabled_follow: false,
 			enabled_reader: true,
+			invert_y: false,
 			target: None,
 			perspective: true,
 		}
@@ -386,8 +401,11 @@ fn mouse_reader_system(
 	time: Res<Time>,
 	mut mouse_motion_event_reader: EventReader<MouseMotion>,
 	mut mouse_wheel_event_reader: EventReader<MouseWheel>,
-	mut query: Query<(&mut FlyCamera, &mut Transform)>,
-		query_target: Query<&Transform, Without<FlyCamera>>,
+	mut q_flycam: Query<(&mut FlyCamera, &mut Transform, &Children)>,
+		q_center_pick_raycast: Query<&PickingObject, With<CenterPickRaycast>>,
+		q_any: Query<&Transform, Without<FlyCamera>>,
+		q_center_pick: Query<Entity, With<CenterPick>>,
+	mut commands: Commands
 ) {
 	let mut delta: Vec2 = Vec2::ZERO;
 	for event in mouse_motion_event_reader.iter() {
@@ -397,9 +415,29 @@ fn mouse_reader_system(
 		return;
 	}
 
-	for (mut options, mut camera_transform) in query.iter_mut() {
+	for (mut options, mut camera_transform, children) in q_flycam.iter_mut() {
 		if !options.enabled_reader {
 			continue;
+		}
+
+		// cleanup previous CenterPick
+		for e in q_center_pick.iter() {
+			commands.entity(e).remove::<CenterPick>();
+		}
+
+		// check intersections on child raycaster and mark them as CenterPick
+		for child in children.iter() {
+			let p = q_center_pick_raycast.get(*child);
+			if p.is_err() {
+				continue;
+			}
+
+			let p = p.unwrap();
+			if let Some(intersections) = p.intersect_list() {
+				for (e_ref, _data) in intersections.iter() {
+					commands.entity(*e_ref).insert(CenterPick);
+				}
+			}
 		}
 
 		let yaw_radians = options.yaw.to_radians();
@@ -407,9 +445,10 @@ fn mouse_reader_system(
 
 		if options.enabled_translation {
 			let target = options.target.unwrap();
-			let target_transform = query_target.get(target).unwrap();
+			let target_transform = q_any.get(target).unwrap();
 
-			options.vertical_scroll += delta.y * options.vertical_scroll_sensitivity * time.delta_seconds();
+			let delta_y = if options.invert_y { delta.y } else { -delta.y };
+			options.vertical_scroll += delta_y * options.vertical_scroll_sensitivity * time.delta_seconds();
 			options.horizontal_scroll += delta.x * options.horizontal_scroll_sensitivity * time.delta_seconds();
 
 			camera_transform.translation = target_transform.translation
@@ -457,6 +496,33 @@ fn mouse_reader_system(
 	}
 }
 
+fn init_camera_system(
+	query: Query<(Entity, &FlyCamera), Without<CenterPickRaycastParent>>,
+	mut commands: Commands
+) {
+	if query.is_empty() {
+		return;
+	}
+
+	for (entity, _options) in query.iter() {
+		commands.entity(entity)
+		.with_children(|parent| {
+			// rotating a child caster so that raycast points forwards, assuming there is something in front of camera
+			let mut transform	= Transform::identity();
+			transform.look_at	(-Vec3::Z, Vec3::Y);
+
+			let _picking_child =
+			parent.spawn_bundle(TransformBundle { local : transform, ..default() })
+			.insert(PickingObject::new_transform_empty())
+			.insert(CenterPickRaycast)
+			.id()
+			;
+		})
+		.insert(CenterPickRaycastParent)
+		;
+	}
+}
+
 /**
 Include this plugin to add the systems for the FlyCamera bundle.
 
@@ -477,6 +543,8 @@ impl Plugin for FlyCameraPlugin {
 			.add_system(camera_2d_movement_system)
 			.add_system(mouse_motion_system)
 			.add_system(camera_follow_system)
-			.add_system(mouse_reader_system);
+			.add_system(mouse_reader_system)
+			.add_system(init_camera_system)
+			;
 	}
 }
