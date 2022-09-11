@@ -385,6 +385,7 @@ fn mouse_motion_system(
 fn mouse_reader_system(
 	time: Res<Time>,
 	mut mouse_motion_event_reader: EventReader<MouseMotion>,
+	mut mouse_wheel_event_reader: EventReader<MouseWheel>,
 	mut query: Query<(&mut FlyCamera, &mut Transform)>,
 		query_target: Query<&Transform, Without<FlyCamera>>,
 ) {
@@ -435,6 +436,23 @@ fn mouse_reader_system(
 			let to = Quat::from_axis_angle(Vec3::X, options.pitch.to_radians());
 
 			camera_transform.rotation = from.slerp(to, options.lean_sensitivity);
+		}
+
+		if options.enabled_zoom {
+			let pixels_per_line = 53.0;
+			let mut scalar = 1.0;
+			for event in mouse_wheel_event_reader.iter() {
+				// scale the event magnitude per pixel or per line
+				let scroll_amount = match event.unit {
+					MouseScrollUnit::Line => event.y,
+					MouseScrollUnit::Pixel => event.y / pixels_per_line,
+				};
+				scalar *= 1.0 - scroll_amount * options.zoom_sensitivity;
+			}
+
+			options.zoom = (scalar * options.zoom)
+				.min(100.0)
+				.max(1.0);
 		}
 	}
 }
