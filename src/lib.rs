@@ -77,8 +77,8 @@ pub struct CenterPickRaycast;
 #[derive(Component)]
 pub struct CenterPickRaycastParent;
 
-#[derive(Component, Default)]
-pub struct ReaderData {
+#[derive(Component, Default, Clone, Copy)]
+pub struct TextDescriptor {
 	pub glyph_width: f32,
 	pub glyph_height: f32,
 	pub rows: u32,
@@ -509,7 +509,7 @@ fn mouse_reader_system(
 	mut mouse_wheel_event_reader: EventReader<MouseWheel>,
 	mut q_flycam: Query<(&mut FlyCamera, &mut Transform, &Children)>,
 		q_center_pick_raycast: Query<&PickingObject, With<CenterPickRaycast>>,
-		q_target: Query<(&Transform, &ReaderData), Without<FlyCamera>>,
+		q_target: Query<(&Transform, &TextDescriptor), Without<FlyCamera>>,
 		q_center_pick: Query<Entity, With<CenterPick>>,
 	mut commands: Commands
 ) {
@@ -553,7 +553,7 @@ fn mouse_reader_system(
 
 		if options.enabled_translation {
 			let target = options.target.unwrap();
-			let (target_transform, reader_data) = q_target.get(target).unwrap();
+			let (target_transform, text_descriptor) = q_target.get(target).unwrap();
 
 			let delta_x = delta.x;
 			let delta_y = if options.invert_y { delta.y } else { -delta.y };
@@ -562,30 +562,30 @@ fn mouse_reader_system(
 			options.column_scroll_accum += delta_x * (delta_seconds / options.horizontal_scroll_easing_seconds);
 
 			// we keep row_scroll_accum in range of 0..glyph_height
-			while options.row_scroll_accum.abs() > reader_data.glyph_height {
+			while options.row_scroll_accum.abs() > text_descriptor.glyph_height {
 				let delta_one = delta.y.signum();
 				if options.row > 0 || delta_one.is_sign_positive() {
 					options.row = (options.row as f32 + delta_one) as u32;
 				}
 
-				options.row_scroll_accum -= reader_data.glyph_height * options.row_scroll_accum.signum();
+				options.row_scroll_accum -= text_descriptor.glyph_height * options.row_scroll_accum.signum();
 			}
 
 			// we also keep row_scroll_accum in range of 0..glyph_width
-			while options.column_scroll_accum.abs() > reader_data.glyph_width {
+			while options.column_scroll_accum.abs() > text_descriptor.glyph_width {
 				let delta_one = delta.x.signum();
 				if options.column > 0 || delta_one.is_sign_positive() {
 					options.column = (options.column as f32 + delta_one) as u32;
 				}
 
-				options.column_scroll_accum -= reader_data.glyph_width * options.column_scroll_accum.signum();
+				options.column_scroll_accum -= text_descriptor.glyph_width * options.column_scroll_accum.signum();
 			}
 
 			let column = options.column as f32;
 			let row = if options.invert_y { options.row as f32 } else { -(options.row as f32) };
 
-			options.horizontal_scroll = column * reader_data.glyph_width;
-			options.vertical_scroll = row * reader_data.glyph_height;
+			options.horizontal_scroll = column * text_descriptor.glyph_width;
+			options.vertical_scroll = row * text_descriptor.glyph_height;
 
 			if !options.column_scroll_mouse_quantized {
 				options.horizontal_scroll += options.column_scroll_accum;
