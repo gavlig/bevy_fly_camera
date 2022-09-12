@@ -160,6 +160,16 @@ pub struct FlyCamera {
 	pub target_translation: Vec3,
 	///
 	pub target_rotation: Quat,
+	///
+	pub key_scroll_delay_seconds: f32,
+	///
+	pub key_scroll_delay_column_inc: f32,
+	///
+	pub key_scroll_delay_column_dec: f32,
+	///
+	pub key_scroll_delay_row_inc: f32,
+	///
+	pub key_scroll_delay_row_dec: f32,
 	/// The current velocity of the FlyCamera. This value is always up-to-date, enforced by [FlyCameraPlugin](struct.FlyCameraPlugin.html)
 	pub velocity: Vec3,
 	/// Key used to move forward. Defaults to <kbd>W</kbd>
@@ -227,6 +237,11 @@ impl Default for FlyCamera {
 			slow_quatizing_easing_seconds: 0.25,
 			target_translation: Vec3::ZERO,
 			target_rotation: Quat::IDENTITY,
+			key_scroll_delay_seconds: 0.03,
+			key_scroll_delay_row_inc: 0.0,
+			key_scroll_delay_row_dec: 0.0,
+			key_scroll_delay_column_inc: 0.0,
+			key_scroll_delay_column_dec: 0.0,
 			velocity: Vec3::ZERO,
 			key_forward: KeyCode::W,
 			key_backward: KeyCode::S,
@@ -245,6 +260,46 @@ impl Default for FlyCamera {
 			invert_y: false,
 			target: None,
 			perspective: true,
+		}
+	}
+}
+
+impl FlyCamera {
+	pub fn column_inc(&mut self, delta_seconds: f32) {
+		self.key_scroll_delay_column_inc += delta_seconds;
+		if self.key_scroll_delay_column_inc >= self.key_scroll_delay_seconds {
+			self.column += 1;
+			self.key_scroll_delay_column_inc -= self.key_scroll_delay_seconds;
+		}
+	}
+
+	pub fn column_dec(&mut self, delta_seconds: f32) {
+		self.key_scroll_delay_column_dec += delta_seconds;
+		if self.column > 0 && self.key_scroll_delay_column_dec >= self.key_scroll_delay_seconds {
+			self.column -= 1;
+			self.key_scroll_delay_column_dec -= self.key_scroll_delay_seconds;
+		}
+	}
+
+	pub fn row_inc(&mut self, delta_seconds: f32) {
+		self.key_scroll_delay_row_inc += delta_seconds;
+		if self.key_scroll_delay_row_inc >= self.key_scroll_delay_seconds {
+			self.row += 1;
+			self.key_scroll_delay_row_inc -= self.key_scroll_delay_seconds;
+
+			let value = -1.0;
+			self.pitch = value;
+		}
+	}
+
+	pub fn row_dec(&mut self, delta_seconds: f32) {
+		self.key_scroll_delay_row_dec += delta_seconds;
+		if self.row > 0 && self.key_scroll_delay_row_dec >= self.key_scroll_delay_seconds {
+			self.row -= 1;
+			self.key_scroll_delay_row_dec -= self.key_scroll_delay_seconds;
+
+			let value = 1.0;
+			self.pitch = value;
 		}
 	}
 }
