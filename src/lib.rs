@@ -117,15 +117,17 @@ pub struct FlyCamera {
 	///
 	pub zoom_sensitivity: f32,
 	///
-	pub vertical_scroll_sensitivity: f32,
+	pub vertical_scroll_easing_seconds: f32,
 	///
-	pub horizontal_scroll_sensitivity: f32,
+	pub horizontal_scroll_easing_seconds: f32,
 	///
-	pub lean_sensitivity: f32,
+	pub translation_easing_seconds: f32,
 	///
-	pub lean_inertia: f32,
+	pub rotation_easing_seconds: f32,
 	///
-	pub lean_reset_inertia: f32,
+	pub lean_easing_seconds: f32,
+	///
+	pub lean_reset_easing_seconds: f32,
 	/// The current pitch of the FlyCamera in degrees. This value is always up-to-date, enforced by [FlyCameraPlugin](struct.FlyCameraPlugin.html)
 	pub pitch: f32,
 	/// The current pitch of the FlyCamera in degrees. This value is always up-to-date, enforced by [FlyCameraPlugin](struct.FlyCameraPlugin.html)
@@ -149,11 +151,9 @@ pub struct FlyCamera {
 	///
 	pub row_scroll_mouse_quantized: bool,
 	///
-	pub scroll_stopped_cooldown: f32,
+	pub slowly_quantize_camera_position: bool,
 	///
-	pub scroll_stopped_time: f32,
-	///
-	pub scroll_reset_inertia: f32,
+	pub slow_quatizing_easing_seconds: f32,
 	///
 	pub target_translation: Vec3,
 	///
@@ -203,11 +203,12 @@ impl Default for FlyCamera {
 			sensitivity: 3.0,
 			friction: 1.0,
 			zoom_sensitivity: 0.15,
-			vertical_scroll_sensitivity: 0.3,
-			horizontal_scroll_sensitivity: 0.2,
-			lean_sensitivity: 0.1,
-			lean_inertia: 0.05,
-			lean_reset_inertia: 0.3,
+			vertical_scroll_easing_seconds: 5.0,
+			horizontal_scroll_easing_seconds: 6.0,
+			translation_easing_seconds: 1.0,
+			rotation_easing_seconds: 1.0,
+			lean_easing_seconds: 1.0,
+			lean_reset_easing_seconds: 0.1,
 			pitch: 0.0,
 			yaw: 0.0,
 			zoom: 10.0,
@@ -219,9 +220,8 @@ impl Default for FlyCamera {
 			row_scroll_accum: 0.0,
 			column_scroll_mouse_quantized: false,
 			row_scroll_mouse_quantized: false,
-			scroll_stopped_cooldown: 0.05,
-			scroll_stopped_time: 0.0,
-			scroll_reset_inertia: 0.4,
+			slowly_quantize_camera_position: true,
+			slow_quatizing_easing_seconds: 0.25,
 			target_translation: Vec3::ZERO,
 			target_rotation: Quat::IDENTITY,
 			velocity: Vec3::ZERO,
@@ -463,6 +463,8 @@ fn mouse_reader_system(
 		return;
 	}
 
+	let delta_seconds = time.delta_seconds();
+
 	for (mut options, mut camera_transform, children) in q_flycam.iter_mut() {
 		if !options.enabled_reader {
 			continue;
@@ -497,10 +499,11 @@ fn mouse_reader_system(
 
 			let delta_x = delta.x;
 			let delta_y = if options.invert_y { delta.y } else { -delta.y };
-			options.row_scroll_accum += delta_y * options.vertical_scroll_sensitivity * time.delta_seconds();
-			options.column_scroll_accum += delta_x * options.horizontal_scroll_sensitivity * time.delta_seconds();
 
-			// we keep row_scroll_accum for scrolling in range of glyph_height
+			options.row_scroll_accum += delta_y * (delta_seconds / options.vertical_scroll_easing_seconds);
+			options.column_scroll_accum += delta_x * (delta_seconds / options.horizontal_scroll_easing_seconds);
+
+			// we keep row_scroll_accum in range of 0..glyph_height
 			while options.row_scroll_accum.abs() > reader_data.glyph_height {
 				let delta_one = delta.y.signum();
 				if options.row > 0 || delta_one.is_sign_positive() {
@@ -510,7 +513,7 @@ fn mouse_reader_system(
 				options.row_scroll_accum -= reader_data.glyph_height * options.row_scroll_accum.signum();
 			}
 
-			// same for columns
+			// we also keep row_scroll_accum in range of 0..glyph_width
 			while options.column_scroll_accum.abs() > reader_data.glyph_width {
 				let delta_one = delta.x.signum();
 				if options.column > 0 || delta_one.is_sign_positive() {
@@ -534,9 +537,12 @@ fn mouse_reader_system(
 				options.vertical_scroll += options.row_scroll_accum;
 			}
 
-			// always slowly move camera to quantized position 
-			options.row_scroll_accum = options.row_scroll_accum.lerp(0.0, options.scroll_reset_inertia);
-			options.column_scroll_accum = options.column_scroll_accum.lerp(0.0, options.scroll_reset_inertia);
+			if options.slowly_quantize_camera_position { // always slowly move camera to quantized position
+				let inertia = delta_seconds / options.slow_quatizing_easing_seconds;
+
+				options.row_scroll_accum = options.row_scroll_accum.lerp(0.0, inertia);
+				options.column_scroll_accum = options.column_scroll_accum.lerp(0.0, inertia);
+			}
 
 			options.target_translation = target_transform.translation
 				+ options.zoom * unit_vector_from_yaw_and_pitch(yaw_radians, pitch_radians)
@@ -544,6 +550,7 @@ fn mouse_reader_system(
 				+ Vec3::Y * options.vertical_scroll
 				;
 
+			let inertia = delta_seconds / options.translation_easing_seconds;
 			camera_transform.translation = camera_transform.translation.lerp(options.target_translation, 0.5);
 		}
 
@@ -552,11 +559,11 @@ fn mouse_reader_system(
 			let delta_y = if options.invert_y { -delta.y } else {delta.y };
 			let (target_pitch, inertia) =
 			if delta_y < 0.0 {
-				(-value, options.lean_inertia)
+				(-value, delta_seconds / options.lean_easing_seconds)
 			} else if delta_y > 0.0 {
-				(value, options.lean_inertia)
+				(value, delta_seconds / options.lean_easing_seconds)
 			} else {
-				(0.0, options.lean_reset_inertia)
+				(0.0, delta_seconds / options.lean_reset_easing_seconds)
 			};
 
 			options.pitch = options.pitch.lerp(target_pitch, inertia);
@@ -564,7 +571,8 @@ fn mouse_reader_system(
 			let from = camera_transform.rotation;
 			let to = Quat::from_axis_angle(Vec3::X, options.pitch.to_radians());
 
-			camera_transform.rotation = from.slerp(to, options.lean_sensitivity);
+			let inertia = delta_seconds / options.rotation_easing_seconds;
+			camera_transform.rotation = from.slerp(to, inertia);
 		}
 
 		if options.enabled_zoom {
