@@ -221,7 +221,7 @@ impl Default for FlyCamera {
 			rotation_easing_seconds: 1.0,
 			zoom_easing_seconds: 0.01,
 			lean_easing_seconds: 1.0,
-			lean_reset_easing_seconds: 0.1,
+			lean_reset_easing_seconds: 0.2,
 			pitch: 0.0,
 			yaw: 0.0,
 			zoom: 10.0,
