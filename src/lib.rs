@@ -256,7 +256,7 @@ impl Default for FlyCamera {
 			enabled_rotation: true,
 			enabled_zoom: true,
 			enabled_follow: false,
-			enabled_reader: true,
+			enabled_reader: false,
 			invert_y: false,
 			target: None,
 			perspective: true,
