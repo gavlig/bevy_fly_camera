@@ -125,6 +125,8 @@ pub struct FlyCamera {
 	///
 	pub rotation_easing_seconds: f32,
 	///
+	pub zoom_easing_seconds: f32,
+	///
 	pub lean_easing_seconds: f32,
 	///
 	pub lean_reset_easing_seconds: f32,
@@ -207,6 +209,7 @@ impl Default for FlyCamera {
 			horizontal_scroll_easing_seconds: 6.0,
 			translation_easing_seconds: 1.0,
 			rotation_easing_seconds: 1.0,
+			zoom_easing_seconds: 0.01,
 			lean_easing_seconds: 1.0,
 			lean_reset_easing_seconds: 0.1,
 			pitch: 0.0,
@@ -587,9 +590,12 @@ fn mouse_reader_system(
 				scalar *= 1.0 - scroll_amount * options.zoom_sensitivity;
 			}
 
-			options.zoom = (scalar * options.zoom)
+			let inertia = delta_seconds / options.zoom_easing_seconds;
+			let target_zoom = (scalar * options.zoom)
 				.min(100.0)
 				.max(1.0);
+			
+			options.zoom = options.zoom.lerp(target_zoom, inertia);
 		}
 	}
 }
