@@ -219,7 +219,7 @@ impl Default for FlyCamera {
 			zoom_sensitivity: 0.15,
 			vertical_scroll_easing_seconds: 5.0,
 			horizontal_scroll_easing_seconds: 6.0,
-			translation_easing_seconds: 1.0,
+			translation_easing_seconds: 0.2,
 			rotation_easing_seconds: 1.0,
 			zoom_easing_seconds: 0.01,
 			lean_easing_seconds: 1.0,
@@ -229,7 +229,7 @@ impl Default for FlyCamera {
 			zoom: 10.0,
 			vertical_scroll: 0.0,
 			horizontal_scroll: 0.0,
-			column: 40,
+			column: 80,
 			row: 20,
 			column_scroll_accum: 0.0,
 			row_scroll_accum: 0.0,
@@ -560,7 +560,8 @@ fn mouse_reader_system(
 		let yaw_radians = options.yaw.to_radians();
 		let pitch_radians = options.pitch.to_radians();
 
-		if options.enabled_translation {
+		// translation
+		{
 			let target = options.target.unwrap();
 			let (target_transform, text_descriptor) = q_target.get(target).unwrap();
 
@@ -573,8 +574,10 @@ fn mouse_reader_system(
 			// we keep row_scroll_accum in range of 0..glyph_height
 			while options.row_scroll_accum.abs() > text_descriptor.glyph_height {
 				let delta_one = delta.y.signum();
-				if options.row > 0 || delta_one.is_sign_positive() {
+				if options.enabled_translation && (options.row > 0 || delta_one.is_sign_positive()) {
 					options.row = (options.row as f32 + delta_one) as u32;
+					// clamping
+					options.row = options.row.min(text_descriptor.rows);
 				}
 
 				options.row_scroll_accum -= text_descriptor.glyph_height * options.row_scroll_accum.signum();
@@ -583,15 +586,17 @@ fn mouse_reader_system(
 			// we also keep row_scroll_accum in range of 0..glyph_width
 			while options.column_scroll_accum.abs() > text_descriptor.glyph_width {
 				let delta_one = delta.x.signum();
-				if options.column > 0 || delta_one.is_sign_positive() {
+				if options.enabled_translation && (options.column > 0 || delta_one.is_sign_positive()) {
 					options.column = (options.column as f32 + delta_one) as u32;
+					// clamping
+					options.column = options.column.min(text_descriptor.columns);
 				}
 
 				options.column_scroll_accum -= text_descriptor.glyph_width * options.column_scroll_accum.signum();
 			}
 
 			let column = options.column as f32;
-			let row = if options.invert_y { options.row as f32 } else { -(options.row as f32) };
+			let row = options.row as f32;
 
 			options.horizontal_scroll = column * text_descriptor.glyph_width;
 			options.vertical_scroll = row * text_descriptor.glyph_height;
@@ -605,7 +610,7 @@ fn mouse_reader_system(
 			}
 
 			if options.slowly_quantize_camera_position { // always slowly move camera to quantized position
-				let inertia = delta_seconds / options.slow_quatizing_easing_seconds;
+				let inertia = (delta_seconds / options.slow_quatizing_easing_seconds).min(1.0);
 
 				options.row_scroll_accum = options.row_scroll_accum.lerp(0.0, inertia);
 				options.column_scroll_accum = options.column_scroll_accum.lerp(0.0, inertia);
@@ -619,13 +624,13 @@ fn mouse_reader_system(
 				+ Vec3::Y * vertical_scroll
 				;
 
-			let inertia = delta_seconds / options.translation_easing_seconds;
-			camera_transform.translation = camera_transform.translation.lerp(options.target_translation, 0.5);
+			let inertia = (delta_seconds / options.translation_easing_seconds).min(1.0);
+			camera_transform.translation = camera_transform.translation.lerp(options.target_translation, inertia);
 		}
 
 		if options.enabled_rotation {
 			let value = 3.0;
-			let delta_y = if options.invert_y { -delta.y } else {delta.y };
+			let delta_y = if options.invert_y { -delta.y } else { delta.y };
 			let (target_pitch, inertia) =
 			if delta_y < 0.0 {
 				(-value, delta_seconds / options.lean_easing_seconds)
@@ -642,7 +647,7 @@ fn mouse_reader_system(
 			let from = camera_transform.rotation;
 			let to = Quat::from_axis_angle(Vec3::X, options.pitch.to_radians());
 
-			let inertia = delta_seconds / options.rotation_easing_seconds;
+			let inertia = (delta_seconds / options.rotation_easing_seconds).min(1.0);
 			camera_transform.rotation = from.slerp(to, inertia);
 		}
 
@@ -658,11 +663,11 @@ fn mouse_reader_system(
 				scalar *= 1.0 - scroll_amount * options.zoom_sensitivity;
 			}
 
-			let inertia = delta_seconds / options.zoom_easing_seconds;
+			let inertia = (delta_seconds / options.zoom_easing_seconds).min(1.0);
 			let target_zoom = (scalar * options.zoom)
 				.min(100.0)
 				.max(1.0);
-			
+
 			options.zoom = options.zoom.lerp(target_zoom, inertia);
 		}
 	}
