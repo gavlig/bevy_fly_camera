@@ -556,7 +556,7 @@ fn mouse_reader_system(
 			let (target_transform, text_descriptor) = q_target.get(target).unwrap();
 
 			let delta_x = delta.x;
-			let delta_y = if options.invert_y { delta.y } else { -delta.y };
+			let delta_y = delta.y;
 
 			options.row_scroll_accum += delta_y * (delta_seconds / options.vertical_scroll_easing_seconds);
 			options.column_scroll_accum += delta_x * (delta_seconds / options.horizontal_scroll_easing_seconds);
@@ -602,10 +602,12 @@ fn mouse_reader_system(
 				options.column_scroll_accum = options.column_scroll_accum.lerp(0.0, inertia);
 			}
 
+			let vertical_scroll = if options.invert_y { options.vertical_scroll } else { -options.vertical_scroll };
+
 			options.target_translation = target_transform.translation
 				+ options.zoom * unit_vector_from_yaw_and_pitch(yaw_radians, pitch_radians)
 				+ Vec3::X * options.horizontal_scroll
-				+ Vec3::Y * options.vertical_scroll
+				+ Vec3::Y * vertical_scroll
 				;
 
 			let inertia = delta_seconds / options.translation_easing_seconds;
