@@ -205,6 +205,8 @@ pub struct FlyCamera {
 	///
 	pub invert_y: bool,
 	///
+	pub pitch_changed: bool,
+	///
 	pub target: Option<Entity>,
 }
 impl Default for FlyCamera {
@@ -252,19 +254,25 @@ impl Default for FlyCamera {
 			key_perspective: KeyCode::Return,
 			mod_perspective: Some(KeyCode::LControl),
 			reset_rotation_on_ortho: true,
+			perspective: true,
 			enabled_translation: true,
 			enabled_rotation: true,
 			enabled_zoom: true,
 			enabled_follow: false,
 			enabled_reader: false,
 			invert_y: false,
+			pitch_changed: false,
 			target: None,
-			perspective: true,
 		}
 	}
 }
 
 impl FlyCamera {
+	pub fn set_pitch(&mut self, pitch: f32) {
+		self.pitch = pitch;
+		self.pitch_changed = true;
+	}
+
 	pub fn column_inc(&mut self, delta_seconds: f32) {
 		self.key_scroll_delay_column_inc += delta_seconds;
 		if self.key_scroll_delay_column_inc >= self.key_scroll_delay_seconds {
@@ -283,23 +291,24 @@ impl FlyCamera {
 
 	pub fn row_inc(&mut self, delta_seconds: f32) {
 		self.key_scroll_delay_row_inc += delta_seconds;
+
+		self.set_pitch(-1.0);
+
 		if self.key_scroll_delay_row_inc >= self.key_scroll_delay_seconds {
 			self.row += 1;
 			self.key_scroll_delay_row_inc -= self.key_scroll_delay_seconds;
-
-			let value = -1.0;
-			self.pitch = value;
 		}
+
 	}
 
 	pub fn row_dec(&mut self, delta_seconds: f32) {
 		self.key_scroll_delay_row_dec += delta_seconds;
+
+		self.set_pitch(1.0);
+
 		if self.row > 0 && self.key_scroll_delay_row_dec >= self.key_scroll_delay_seconds {
 			self.row -= 1;
 			self.key_scroll_delay_row_dec -= self.key_scroll_delay_seconds;
-
-			let value = 1.0;
-			self.pitch = value;
 		}
 	}
 }
@@ -622,6 +631,8 @@ fn mouse_reader_system(
 				(-value, delta_seconds / options.lean_easing_seconds)
 			} else if delta_y > 0.0 {
 				(value, delta_seconds / options.lean_easing_seconds)
+			} else if options.pitch_changed {
+				(options.pitch, delta_seconds / options.lean_easing_seconds)
 			} else {
 				(0.0, delta_seconds / options.lean_reset_easing_seconds)
 			};
