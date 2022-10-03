@@ -226,11 +226,11 @@ impl Default for FlyCamera {
 			lean_reset_easing_seconds: 0.2,
 			pitch: 0.0,
 			yaw: 0.0,
-			zoom: 10.0,
+			zoom: 6.0,
 			vertical_scroll: 0.0,
 			horizontal_scroll: 0.0,
-			column: 80,
-			row: 20,
+			column: 36,
+			row: 17,
 			column_scroll_accum: 0.0,
 			row_scroll_accum: 0.0,
 			column_scroll_mouse_quantized: false,
@@ -589,7 +589,7 @@ fn mouse_reader_system(
 				if options.enabled_translation && (options.column > 0 || delta_one.is_sign_positive()) {
 					options.column = (options.column as f32 + delta_one) as u32;
 					// clamping
-					options.column = options.column.min(text_descriptor.columns);
+					options.column = options.column.min(text_descriptor.columns * 2);
 				}
 
 				options.column_scroll_accum -= text_descriptor.glyph_width * options.column_scroll_accum.signum();
