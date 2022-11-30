@@ -30,43 +30,20 @@
 //! ```
 //!
 //! There's also a basic piece of example code included in `/examples/basic.rs`
-//!
-//! # 2D
-//! Movement system only uses the keyboard to move in all four directions across the 2d plane.
-//!
-//! The default keybinds are:
-//! - <kbd>W</kbd> / <kbd>A</kbd> / <kbd>S</kbd> / <kbd>D</kbd> - Move along the 2d plane
-//!
-//! ## Example
-//! ```no_compile
-//! use bevy::prelude::*;
-//! use bevy_fly_camera::{FlyCamera2d, FlyCameraPlugin};
-//! ```
-//! ```no_compile
-//!	commands
-//!   .spawn(Camera2dBundle::default())
-//!   .with(FlyCamera2d::default());
-//! ```
-//!
-//! There's also a basic piece of example code included in `/examples/2d.rs`
+
 
 use bevy::{ 
 	input::{
+		*,
 		mouse::{ MouseMotion, MouseScrollUnit, MouseWheel },
-		prelude::*,
+		keyboard::*,
 	},
 	prelude::*,
 	render::camera::{*, self}
 };
+
 use bevy_mod_picking::*;
 use lerp::Lerp;
-use cam2d::camera_2d_movement_system;
-use util::movement_axis;
-
-mod cam2d;
-mod util;
-
-pub use cam2d::FlyCamera2d;
 
 #[derive(Component)]
 pub struct CenterPick;
@@ -92,7 +69,7 @@ pub struct Row(pub u32);
 pub struct Column(pub u32);
 
 
-type PickingObject = bevy_mod_picking::RayCastSource<PickingRaycastSet>;
+type PickingObject = bevy_mod_picking::RaycastSource<PickingRaycastSet>;
 
 /// A set of options for initializing a FlyCamera.
 /// Attach this component to a [`Camera3dBundle`](https://docs.rs/bevy/0.4.0/bevy/prelude/struct.Camera3dBundle.html) bundle to control it with your mouse and keyboard.
@@ -155,7 +132,7 @@ pub struct FlyCamera {
 	///
 	pub slowly_quantize_camera_position: bool,
 	///
-	pub slow_quatizing_easing_seconds: f32,
+	pub slow_quantizing_easing_seconds: f32,
 	///
 	pub target_translation: Vec3,
 	///
@@ -236,7 +213,7 @@ impl Default for FlyCamera {
 			column_scroll_mouse_quantized: false,
 			row_scroll_mouse_quantized: false,
 			slowly_quantize_camera_position: true,
-			slow_quatizing_easing_seconds: 0.25,
+			slow_quantizing_easing_seconds: 0.25,
 			target_translation: Vec3::ZERO,
 			target_rotation: Quat::IDENTITY,
 			key_scroll_delay_seconds: 0.03,
@@ -311,6 +288,21 @@ impl FlyCamera {
 			self.key_scroll_delay_row_dec -= self.key_scroll_delay_seconds;
 		}
 	}
+}
+
+pub fn movement_axis(
+	input: &Res<Input<KeyCode>>,
+	plus: KeyCode,
+	minus: KeyCode,
+) -> f32 {
+	let mut axis = 0.0;
+	if input.pressed(plus) {
+		axis += 1.0;
+	}
+	if input.pressed(minus) {
+		axis -= 1.0;
+	}
+	axis
 }
 
 fn forward_vector(rotation: &Quat) -> Vec3 {
@@ -685,11 +677,11 @@ fn init_camera_system(
 		commands.entity(entity)
 		.with_children(|parent| {
 			// rotating a child caster so that raycast points forwards, assuming there is something in front of camera
-			let mut transform	= Transform::identity();
+			let mut transform	= Transform::default();
 			transform.look_at	(-Vec3::Z, Vec3::Y);
 
 			let _picking_child =
-			parent.spawn_bundle(TransformBundle { local : transform, ..default() })
+			parent.spawn(TransformBundle { local : transform, ..default() })
 			.insert(PickingObject::new_transform_empty())
 			.insert(CenterPickRaycast)
 			.id()
