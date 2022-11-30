@@ -203,11 +203,11 @@ impl Default for FlyCamera {
 			lean_reset_easing_seconds: 0.2,
 			pitch: 0.0,
 			yaw: 0.0,
-			zoom: 6.0,
+			zoom: 6.7,
 			vertical_scroll: 0.0,
 			horizontal_scroll: 0.0,
-			column: 36,
-			row: 17,
+			column: 51,
+			row: 19,
 			column_scroll_accum: 0.0,
 			row_scroll_accum: 0.0,
 			column_scroll_mouse_quantized: false,
@@ -323,37 +323,33 @@ fn strafe_vector(rotation: &Quat) -> Vec3 {
 }
 
 fn camera_movement_system(
-	time: Res<Time>,
-	keyboard_input: Res<Input<KeyCode>>,
-	mut query: Query<(&mut FlyCamera, &mut Transform, &mut Projection)>,
+		time			: Res<Time>,
+		key_code		: Res<Input<KeyCode>>,
+	mut q_fly_camera	: Query<(&mut FlyCamera, &mut Transform, &mut Projection)>,
 ) {
-	for (mut options, mut transform, mut projection) in query.iter_mut() {
-		if !options.enabled_translation || options.enabled_follow || options.enabled_reader {
+	for (mut fly_camera, mut camera_transform, mut projection) in q_fly_camera.iter_mut() {
+		if !fly_camera.enabled_translation || fly_camera.enabled_follow || fly_camera.enabled_reader {
 			continue;
 		}
 
 		let (axis_h, axis_v, axis_float) = (
-			movement_axis(&keyboard_input, options.key_right, options.key_left),
-			movement_axis(
-				&keyboard_input,
-				options.key_backward,
-				options.key_forward,
-			),
-			movement_axis(&keyboard_input, options.key_up, options.key_down),
+			movement_axis(&key_code, fly_camera.key_right,		fly_camera.key_left),
+			movement_axis(&key_code, fly_camera.key_backward,	fly_camera.key_forward),
+			movement_axis(&key_code, fly_camera.key_up,			fly_camera.key_down),
 		);
 
-		let modper = options.mod_perspective;
-		let perspective_mod = (modper.is_some() && keyboard_input.pressed(modper.unwrap())) || modper.is_none();
-		if perspective_mod && keyboard_input.just_pressed(options.key_perspective) {
-			let toggle 	= !options.perspective;
-			options.perspective = toggle;
+		let modper = fly_camera.mod_perspective;
+		let perspective_mod = (modper.is_some() && key_code.pressed(modper.unwrap())) || modper.is_none();
+		if perspective_mod && key_code.just_pressed(fly_camera.key_perspective) {
+			let toggle 	= !fly_camera.perspective;
+			fly_camera.perspective = toggle;
 
 			*projection = 
-			if options.perspective {
+			if fly_camera.perspective {
 				Projection::Perspective(PerspectiveProjection::default())
 			} else {
-				options.yaw = 0.0;
-				options.pitch = 0.0;
+				fly_camera.yaw = 0.0;
+				fly_camera.pitch = 0.0;
 
 				Projection::Orthographic(
 				OrthographicProjection {
@@ -365,40 +361,40 @@ fn camera_movement_system(
 			}
 		}
 
-		let rotation = transform.rotation;
+		let rotation = camera_transform.rotation;
 		let accel: Vec3 = (strafe_vector(&rotation) * axis_h)
 			+ (forward_walk_vector(&rotation) * axis_v)
 			+ (Vec3::Y * axis_float);
 		let accel: Vec3 = if accel.length() != 0.0 {
-			accel.normalize() * options.accel
+			accel.normalize() * fly_camera.accel
 		} else {
 			Vec3::ZERO
 		};
 
-		let friction: Vec3 = if options.velocity.length() != 0.0 {
-			options.velocity.normalize() * -1.0 * options.friction
+		let friction: Vec3 = if fly_camera.velocity.length() != 0.0 {
+			fly_camera.velocity.normalize() * -1.0 * fly_camera.friction
 		} else {
 			Vec3::ZERO
 		};
 
-		options.velocity += accel * time.delta_seconds();
+		fly_camera.velocity += accel * time.delta_seconds();
 
 		// clamp within max speed
-		if options.velocity.length() > options.max_speed {
-			options.velocity = options.velocity.normalize() * options.max_speed;
+		if fly_camera.velocity.length() > fly_camera.max_speed {
+			fly_camera.velocity = fly_camera.velocity.normalize() * fly_camera.max_speed;
 		}
 
 		let delta_friction = friction * time.delta_seconds();
 
-		options.velocity = if (options.velocity + delta_friction).signum()
-			!= options.velocity.signum()
+		fly_camera.velocity = if (fly_camera.velocity + delta_friction).signum()
+			!= fly_camera.velocity.signum()
 		{
 			Vec3::ZERO
 		} else {
-			options.velocity + delta_friction
+			fly_camera.velocity + delta_friction
 		};
 
-		transform.translation += options.velocity;
+		camera_transform.translation += fly_camera.velocity;
 	}
 }
 
@@ -411,14 +407,14 @@ fn unit_vector_from_yaw_and_pitch(yaw: f32, pitch: f32) -> Vec3 {
 }
 
 fn camera_follow_system(
-	time: Res<Time>,
-	mut mouse_motion_event_reader: EventReader<MouseMotion>,
-	mut mouse_wheel_event_reader: EventReader<MouseWheel>,
-	mut query_cam: Query<(&mut FlyCamera, &mut Transform)>,
-		query_target: Query<&Transform, Without<FlyCamera>>,
+		time						: Res<Time>,
+	mut mouse_motion_event_reader	: EventReader<MouseMotion>,
+	mut mouse_wheel_event_reader	: EventReader<MouseWheel>,
+	mut q_fly_camera				: Query<(&mut FlyCamera, &mut Transform)>,
+		q_target					: Query<&Transform, Without<FlyCamera>>,
 ) {
-	for (mut options, mut camera_transform) in query_cam.iter_mut() {
-		if !options.enabled_follow || options.target == None {
+	for (mut fly_camera, mut camera_transform) in q_fly_camera.iter_mut() {
+		if !fly_camera.enabled_follow || fly_camera.target == None {
 			continue;
 		}
 
@@ -430,15 +426,15 @@ fn camera_follow_system(
 			continue;
 		}
 
-		if options.enabled_rotation {
-			options.yaw -= delta.x * options.sensitivity * time.delta_seconds();
-			options.pitch += delta.y * options.sensitivity * time.delta_seconds();
+		if fly_camera.enabled_rotation {
+			fly_camera.yaw -= delta.x * fly_camera.sensitivity * time.delta_seconds();
+			fly_camera.pitch += delta.y * fly_camera.sensitivity * time.delta_seconds();
 
-			options.pitch = options.pitch.clamp(-89.0, 89.9);
+			fly_camera.pitch = fly_camera.pitch.clamp(-89.0, 89.9);
 		}
 
-		let yaw_radians = options.yaw.to_radians();
-		let pitch_radians = options.pitch.to_radians();
+		let yaw_radians = fly_camera.yaw.to_radians();
+		let pitch_radians = fly_camera.pitch.to_radians();
 
 		//
 
@@ -450,24 +446,24 @@ fn camera_follow_system(
 				MouseScrollUnit::Line => event.y,
 				MouseScrollUnit::Pixel => event.y / pixels_per_line,
 			};
-			scalar *= 1.0 - scroll_amount * options.zoom_sensitivity;
+			scalar *= 1.0 - scroll_amount * fly_camera.zoom_sensitivity;
 		}
 
-		if options.enabled_zoom {
-			options.zoom = (scalar * options.zoom)
+		if fly_camera.enabled_zoom {
+			fly_camera.zoom = (scalar * fly_camera.zoom)
 				.min(100.0)
 				.max(1.0);
 		}
 
 		//
-		if options.enabled_translation {
-			let target = options.target.unwrap();
-			let target_transform = query_target.get(target).unwrap();
+		if fly_camera.enabled_translation {
+			let target = fly_camera.target.unwrap();
+			let target_transform = q_target.get(target).unwrap();
 
-			camera_transform.translation = target_transform.translation + options.zoom * unit_vector_from_yaw_and_pitch(yaw_radians, pitch_radians);
+			camera_transform.translation = target_transform.translation + fly_camera.zoom * unit_vector_from_yaw_and_pitch(yaw_radians, pitch_radians);
 		}
 
-		if options.enabled_rotation {
+		if fly_camera.enabled_rotation {
 			camera_transform.rotation = Quat::from_axis_angle(Vec3::Y, yaw_radians) * Quat::from_axis_angle(-Vec3::X, pitch_radians);
 		}
 	}
@@ -476,7 +472,7 @@ fn camera_follow_system(
 fn mouse_motion_system(
 	time: Res<Time>,
 	mut mouse_motion_event_reader: EventReader<MouseMotion>,
-	mut query: Query<(&mut FlyCamera, &mut Transform)>,
+	mut q_fly_camera: Query<(&mut FlyCamera, &mut Transform)>,
 ) {
 	let mut delta: Vec2 = Vec2::ZERO;
 	for event in mouse_motion_event_reader.iter() {
@@ -486,18 +482,18 @@ fn mouse_motion_system(
 		return;
 	}
 
-	for (mut options, mut transform) in query.iter_mut() {
-		if !options.enabled_rotation || options.enabled_follow || options.enabled_reader {
+	for (mut fly_camera, mut transform) in q_fly_camera.iter_mut() {
+		if !fly_camera.enabled_rotation || fly_camera.enabled_follow || fly_camera.enabled_reader {
 			continue;
 		}
-		options.yaw -= delta.x * options.sensitivity * time.delta_seconds();
-		options.pitch += delta.y * options.sensitivity * time.delta_seconds();
+		fly_camera.yaw -= delta.x * fly_camera.sensitivity * time.delta_seconds();
+		fly_camera.pitch += delta.y * fly_camera.sensitivity * time.delta_seconds();
 
-		options.pitch = options.pitch.clamp(-89.0, 89.9);
+		fly_camera.pitch = fly_camera.pitch.clamp(-89.0, 89.9);
 		// println!("pitch: {}, yaw: {}", options.pitch, options.yaw);
 
-		let yaw_radians = options.yaw.to_radians();
-		let pitch_radians = options.pitch.to_radians();
+		let yaw_radians = fly_camera.yaw.to_radians();
+		let pitch_radians = fly_camera.pitch.to_radians();
 
 		transform.rotation = Quat::from_axis_angle(Vec3::Y, yaw_radians)
 			* Quat::from_axis_angle(-Vec3::X, pitch_radians);
@@ -524,8 +520,8 @@ fn mouse_reader_system(
 
 	let delta_seconds = time.delta_seconds();
 
-	for (mut options, mut camera_transform, children) in q_flycam.iter_mut() {
-		if !options.enabled_reader {
+	for (mut fly_camera, mut camera_transform, children) in q_flycam.iter_mut() {
+		if !fly_camera.enabled_reader {
 			continue;
 		}
 
@@ -542,108 +538,106 @@ fn mouse_reader_system(
 			}
 
 			let p = p.unwrap();
-			if let Some(intersections) = p.intersect_list() {
-				for (e_ref, _data) in intersections.iter() {
-					commands.entity(*e_ref).insert(CenterPick);
-				}
+			for (e_ref, _data) in p.intersections().iter() {
+				commands.entity(*e_ref).insert(CenterPick);
 			}
 		}
 
-		let yaw_radians = options.yaw.to_radians();
-		let pitch_radians = options.pitch.to_radians();
+		let yaw_radians = fly_camera.yaw.to_radians();
+		let pitch_radians = fly_camera.pitch.to_radians();
 
 		// translation
 		{
-			let target = options.target.unwrap();
+			let target = fly_camera.target.unwrap();
 			let (target_transform, text_descriptor) = q_target.get(target).unwrap();
 
 			let delta_x = delta.x;
 			let delta_y = delta.y;
 
-			options.row_scroll_accum += delta_y * (delta_seconds / options.vertical_scroll_easing_seconds);
-			options.column_scroll_accum += delta_x * (delta_seconds / options.horizontal_scroll_easing_seconds);
+			fly_camera.row_scroll_accum += delta_y * (delta_seconds / fly_camera.vertical_scroll_easing_seconds);
+			fly_camera.column_scroll_accum += delta_x * (delta_seconds / fly_camera.horizontal_scroll_easing_seconds);
 
 			// we keep row_scroll_accum in range of 0..glyph_height
-			while options.row_scroll_accum.abs() > text_descriptor.glyph_height {
+			while fly_camera.row_scroll_accum.abs() > text_descriptor.glyph_height {
 				let delta_one = delta.y.signum();
-				if options.enabled_translation && (options.row > 0 || delta_one.is_sign_positive()) {
-					options.row = (options.row as f32 + delta_one) as u32;
+				if fly_camera.enabled_translation && (fly_camera.row > 0 || delta_one.is_sign_positive()) {
+					fly_camera.row = (fly_camera.row as f32 + delta_one) as u32;
 					// clamping
-					options.row = options.row.min(text_descriptor.rows);
+					fly_camera.row = fly_camera.row.min(text_descriptor.rows);
 				}
 
-				options.row_scroll_accum -= text_descriptor.glyph_height * options.row_scroll_accum.signum();
+				fly_camera.row_scroll_accum -= text_descriptor.glyph_height * fly_camera.row_scroll_accum.signum();
 			}
 
 			// we also keep row_scroll_accum in range of 0..glyph_width
-			while options.column_scroll_accum.abs() > text_descriptor.glyph_width {
+			while fly_camera.column_scroll_accum.abs() > text_descriptor.glyph_width {
 				let delta_one = delta.x.signum();
-				if options.enabled_translation && (options.column > 0 || delta_one.is_sign_positive()) {
-					options.column = (options.column as f32 + delta_one) as u32;
+				if fly_camera.enabled_translation && (fly_camera.column > 0 || delta_one.is_sign_positive()) {
+					fly_camera.column = (fly_camera.column as f32 + delta_one) as u32;
 					// clamping
-					options.column = options.column.min(text_descriptor.columns * 2);
+					fly_camera.column = fly_camera.column.min(text_descriptor.columns * 2);
 				}
 
-				options.column_scroll_accum -= text_descriptor.glyph_width * options.column_scroll_accum.signum();
+				fly_camera.column_scroll_accum -= text_descriptor.glyph_width * fly_camera.column_scroll_accum.signum();
 			}
 
-			let column = options.column as f32;
-			let row = options.row as f32;
+			let column = fly_camera.column as f32;
+			let row = fly_camera.row as f32;
 
-			options.horizontal_scroll = column * text_descriptor.glyph_width;
-			options.vertical_scroll = row * text_descriptor.glyph_height;
+			fly_camera.horizontal_scroll = column * text_descriptor.glyph_width;
+			fly_camera.vertical_scroll = row * text_descriptor.glyph_height;
 
-			if !options.column_scroll_mouse_quantized {
-				options.horizontal_scroll += options.column_scroll_accum;
+			if !fly_camera.column_scroll_mouse_quantized {
+				fly_camera.horizontal_scroll += fly_camera.column_scroll_accum;
 			}
 
-			if !options.row_scroll_mouse_quantized {
-				options.vertical_scroll += options.row_scroll_accum;
+			if !fly_camera.row_scroll_mouse_quantized {
+				fly_camera.vertical_scroll += fly_camera.row_scroll_accum;
 			}
 
-			if options.slowly_quantize_camera_position { // always slowly move camera to quantized position
-				let inertia = (delta_seconds / options.slow_quatizing_easing_seconds).min(1.0);
+			if fly_camera.slowly_quantize_camera_position { // always slowly move camera to quantized position
+				let inertia = (delta_seconds / fly_camera.slow_quantizing_easing_seconds).min(1.0);
 
-				options.row_scroll_accum = options.row_scroll_accum.lerp(0.0, inertia);
-				options.column_scroll_accum = options.column_scroll_accum.lerp(0.0, inertia);
+				fly_camera.row_scroll_accum = fly_camera.row_scroll_accum.lerp(0.0, inertia);
+				fly_camera.column_scroll_accum = fly_camera.column_scroll_accum.lerp(0.0, inertia);
 			}
 
-			let vertical_scroll = if options.invert_y { options.vertical_scroll } else { -options.vertical_scroll };
+			let vertical_scroll = if fly_camera.invert_y { fly_camera.vertical_scroll } else { -fly_camera.vertical_scroll };
 
-			options.target_translation = target_transform.translation
-				+ options.zoom * unit_vector_from_yaw_and_pitch(yaw_radians, pitch_radians)
-				+ Vec3::X * options.horizontal_scroll
+			fly_camera.target_translation = target_transform.translation
+				+ fly_camera.zoom * unit_vector_from_yaw_and_pitch(yaw_radians, pitch_radians)
+				+ Vec3::X * fly_camera.horizontal_scroll
 				+ Vec3::Y * vertical_scroll
 				;
 
-			let inertia = (delta_seconds / options.translation_easing_seconds).min(1.0);
-			camera_transform.translation = camera_transform.translation.lerp(options.target_translation, inertia);
+			let inertia = (delta_seconds / fly_camera.translation_easing_seconds).min(1.0);
+			camera_transform.translation = camera_transform.translation.lerp(fly_camera.target_translation, inertia);
 		}
 
-		if options.enabled_rotation {
+		if fly_camera.enabled_rotation {
 			let value = 3.0;
-			let delta_y = if options.invert_y { -delta.y } else { delta.y };
+			let delta_y = if fly_camera.invert_y { -delta.y } else { delta.y };
 			let (target_pitch, inertia) =
 			if delta_y < 0.0 {
-				(-value, delta_seconds / options.lean_easing_seconds)
+				(-value, delta_seconds / fly_camera.lean_easing_seconds)
 			} else if delta_y > 0.0 {
-				(value, delta_seconds / options.lean_easing_seconds)
-			} else if options.pitch_changed {
-				(options.pitch, delta_seconds / options.lean_easing_seconds)
+				(value, delta_seconds / fly_camera.lean_easing_seconds)
+			} else if fly_camera.pitch_changed {
+				(fly_camera.pitch, delta_seconds / fly_camera.lean_easing_seconds)
 			} else {
-				(0.0, delta_seconds / options.lean_reset_easing_seconds)
+				(0.0, delta_seconds / fly_camera.lean_reset_easing_seconds)
 			};
 
-			options.pitch = options.pitch.lerp(target_pitch, inertia);
+			fly_camera.pitch = fly_camera.pitch.lerp(target_pitch, inertia);
 
 			let from = camera_transform.rotation;
-			let to = Quat::from_axis_angle(Vec3::X, options.pitch.to_radians());
+			let to = Quat::from_axis_angle(Vec3::X, fly_camera.pitch.to_radians());
 
-			let inertia = (delta_seconds / options.rotation_easing_seconds).min(1.0);
+			let inertia = (delta_seconds / fly_camera.rotation_easing_seconds).min(1.0);
 			camera_transform.rotation = from.slerp(to, inertia);
 		}
 
-		if options.enabled_zoom {
+		if fly_camera.enabled_zoom {
 			let pixels_per_line = 53.0;
 			let mut scalar = 1.0;
 			for event in mouse_wheel_event_reader.iter() {
@@ -652,15 +646,15 @@ fn mouse_reader_system(
 					MouseScrollUnit::Line => event.y,
 					MouseScrollUnit::Pixel => event.y / pixels_per_line,
 				};
-				scalar *= 1.0 - scroll_amount * options.zoom_sensitivity;
+				scalar *= 1.0 - scroll_amount * fly_camera.zoom_sensitivity;
 			}
 
-			let inertia = (delta_seconds / options.zoom_easing_seconds).min(1.0);
-			let target_zoom = (scalar * options.zoom)
+			let inertia = (delta_seconds / fly_camera.zoom_easing_seconds).min(1.0);
+			let target_zoom = (scalar * fly_camera.zoom)
 				.min(100.0)
 				.max(1.0);
 
-			options.zoom = options.zoom.lerp(target_zoom, inertia);
+			fly_camera.zoom = fly_camera.zoom.lerp(target_zoom, inertia);
 		}
 	}
 }
@@ -708,12 +702,12 @@ pub struct FlyCameraPlugin;
 impl Plugin for FlyCameraPlugin {
 	fn build(&self, app: &mut App) {
 		app
-			.add_system(camera_movement_system)
-			.add_system(camera_2d_movement_system)
-			.add_system(mouse_motion_system)
-			.add_system(camera_follow_system)
-			.add_system(mouse_reader_system)
 			.add_system(init_camera_system)
+			.add_system(camera_movement_system)
+			.add_system(camera_follow_system)
+			.add_system(mouse_motion_system)
+			.add_system(mouse_reader_system)
+			
 			;
 	}
 }
